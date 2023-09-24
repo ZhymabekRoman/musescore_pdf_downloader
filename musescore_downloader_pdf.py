@@ -1,4 +1,4 @@
-# pip3 install cairosvg img2pdf python-telegram-bot asyncer
+# pip3 install cairosvg img2pdf pyTelegramBotAPI asyncer
 from asyncer import asyncify
 import zipfile
 import os
@@ -104,7 +104,7 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     image_content = image_response.content
     try:
         svg_converted = io.BytesIO()
-        svg2png(bytestring=image_content, write_to=svg_converted, scale=2.3, dpi=300)
+        svg2png(bytestring=image_content, write_to=svg_converted, scale=2, dpi=300)
         image_content = svg_converted
         image_content.seek(0)
     except Exception as ex:
@@ -136,8 +136,7 @@ def download_notes_as_pdf(note_url: str) -> io.BytesIO():
             raise NoSuchElementException()
         note_id = content.removeprefix("musescore://score/")
     except NoSuchElementException:
-        print("Meta tag not found")
-        return
+        raise ValueError("No valid Musescore URL found")
 
     elements = driver.find_elements(By.CSS_SELECTOR, '.EEnGW.F16e6')
 
