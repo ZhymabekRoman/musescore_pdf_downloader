@@ -1,4 +1,7 @@
-# pip3 install cairosvg img2pdf
+# pip3 install cairosvg img2pdf python-telegram-bot asyncer
+from asyncer import asyncify
+import zipfile
+import os
 import threading
 from cairosvg import svg2png
 import io
@@ -38,11 +41,30 @@ local_state = {
 }
 
 options = webdriver.ChromeOptions()
+options.add_argument("--headless")
 options.add_argument("--no-sandbox")
 options.add_argument("--single-process")
 # options.add_argument("user-data-dir=/home/roman/.config/chromium/Default")
 options.add_experimental_option("localState", local_state)
+
 # options.add_experimental_option("detach", True)
+
+
+def downloading_and_unpack_ublock():
+    if not os.path.exists("ublock.zip"):
+        ublock_url = "https://github.com/gorhill/uBlock/releases/download/1.52.2/uBlock0_1.52.2.chromium.zip"
+        response = requests.get(ublock_url)
+        with open("ublock.zip", "wb") as f:
+            f.write(response.content)
+    if not os.path.exists("uBlock0.chromium"):
+        with zipfile.ZipFile("ublock.zip", "r") as zip_ref:
+            zip_ref.extractall()
+
+    return os.path.join(os.getcwd(), "uBlock0.chromium")
+
+
+# Extensions doesn't supported in headless mode
+options.add_argument("--load-extension=" + downloading_and_unpack_ublock())
 
 driver = webdriver.Chrome(options=options)
 
@@ -82,7 +104,7 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     image_content = image_response.content
     try:
         svg_converted = io.BytesIO()
-        svg2png(bytestring=image_content, write_to=svg_converted)
+        svg2png(bytestring=image_content, write_to=svg_converted, scale=2.3, dpi=300)
         image_content = svg_converted
         image_content.seek(0)
     except Exception as ex:
@@ -95,7 +117,11 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     return image_content
 
 
-def download_notes_as_pdf(note_url: str) -> bytes:
+async def async_download_notes_as_pdf(note_url: str) -> io.BytesIO():
+    return await asyncify(download_notes_as_pdf)(note_url)
+
+
+def download_notes_as_pdf(note_url: str) -> io.BytesIO():
     driver.get(note_url)
 
     # sleep(2)
@@ -128,13 +154,17 @@ def download_notes_as_pdf(note_url: str) -> bytes:
     for thread_num, thread in enumerate(note_images):
         note_images[thread_num] = thread.join()
 
-    with open("name.pdf", "wb") as f:
-        f.write(img2pdf.convert(note_images))
+    pdf_write_io = io.BytesIO()
+    pdf_write_io.write(img2pdf.convert(note_images))
+    return pdf_write_io
 
 
 def main():
     input_note_url = input("enter Musescore score URL: ")
-    download_notes_as_pdf(input_note_url)
+    pdf_note = download_notes_as_pdf(input_note_url)
+
+    with open("name.pdf", "wb") as f:
+        f.write(pdf_note.getvalue())
 
 
 if __name__ == "__main__":
