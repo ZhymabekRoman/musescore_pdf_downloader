@@ -1,9 +1,11 @@
 # pip3 install cairosvg img2pdf pyTelegramBotAPI asyncer sentry-sdk
 from asyncer import asyncify
+from math import ceil
 import zipfile
 import os
 import threading
 from cairosvg import svg2png
+import cairosvg
 import io
 import img2pdf
 # from time import sleep
@@ -15,6 +17,15 @@ import sys
 
 session = requests.Session()
 session.headers.update({"user-agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'})
+
+MEDIUM_QUALITY = (1.0, 150)
+MEDIUM_PLUS_QUALITY = (2, 300)
+
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 # Thanks to Alexandra Zaharia: https://alexandra-zaharia.github.io/posts/how-to-return-a-result-from-a-python-thread/
@@ -72,6 +83,16 @@ options.add_argument("--load-extension=" + downloading_and_unpack_ublock())
 driver = webdriver.Chrome(options=options)
 
 
+def calculate_scale(width, height, max_dim):
+    width, height = float(width), float(height)
+    if width > height:
+        scale = max_dim / width
+    else:
+        scale = max_dim / height
+
+    return ceil(scale)
+
+
 def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     if note_url is None or note_id is None or page is None:
         raise ValueError("Note url, note id or page is None")
@@ -105,8 +126,14 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     image_response = session.get(image_url)
     image_content = image_response.content
     try:
+        tree = cairosvg.parser.Tree(bytestring=image_content)
+        if float(tree['width']) < 1500.0 or float(tree['height']) < 1500.0:
+            scale = calculate_scale(tree['width'], tree['height'], 1500.0)
+        else:
+            scale = MEDIUM_QUALITY[0]
+
         svg_converted = io.BytesIO()
-        svg2png(bytestring=image_content, write_to=svg_converted, scale=2, dpi=300)
+        svg2png(bytestring=image_content, write_to=svg_converted, scale=scale, dpi=MEDIUM_PLUS_QUALITY[1])
         image_content = svg_converted
         image_content.seek(0)
     except Exception as ex:
@@ -146,17 +173,20 @@ def download_notes_as_pdf(note_url: str) -> io.BytesIO():
     print(page_count)
 
     note_images = [ReturnValueThread(target=download_note_image, args=(note_url, note_id, page)) for page in range(page_count)]
+    note_images_result = []
 
-    # Start all of the threads.
-    for thread in note_images:
-        thread.start()
+    for chuncked_note_images in chunks(note_images, 8):
+        for thread in chuncked_note_images:
+            thread.start()
 
-    # Wait for all of the threads to finish.
-    for thread_num, thread in enumerate(note_images):
-        note_images[thread_num] = thread.join()
+        for thread in chuncked_note_images:
+            note_images_result.append(thread.join())
 
     pdf_write_io = io.BytesIO()
-    pdf_write_io.write(img2pdf.convert(note_images))
+    pdf_thread = ReturnValueThread(target=img2pdf.convert, args=(note_images_result))
+    pdf_thread.start()
+    pdf_thread_result = pdf_thread.join()
+    pdf_write_io.write(pdf_thread_result)
     return pdf_write_io
 
 
