@@ -5,18 +5,18 @@ from utils import URLValidator
 import telebot
 import sentry_sdk
 
-SENITRY_SDK_TOKEN = os.getenv("SENITRY_SDK_TOKEN")
-
-sentry_sdk.init(, traces_sample_rate=1.0)
-
 # Enable logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG
 )
 # set higher logging level for httpx to avoid all GET and POST requests being logged
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+SENITRY_SDK_TOKEN = os.getenv("SENITRY_SDK_TOKEN")
+
+sentry_sdk.init(SENITRY_SDK_TOKEN, traces_sample_rate=1.0)
 
 API_TOKEN = os.environ["TOKEN"]
 bot = telebot.TeleBot(API_TOKEN)
