@@ -1,4 +1,4 @@
-# pip3 install cairosvg img2pdf pyTelegramBotAPI asyncer
+# pip3 install cairosvg img2pdf pyTelegramBotAPI asyncer sentry-sdk
 from asyncer import asyncify
 import zipfile
 import os
@@ -12,6 +12,9 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 import requests
 import sys
+
+session = requests.Session()
+session.headers.update({"user-agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'})
 
 
 # Thanks to Alexandra Zaharia: https://alexandra-zaharia.github.io/posts/how-to-return-a-result-from-a-python-thread/
@@ -85,7 +88,6 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
         'sec-fetch-dest': 'empty',
         'sec-fetch-mode': 'cors',
         'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36',
     }
 
     params = {
@@ -95,12 +97,12 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
         'v2': '1',
     }
 
-    response = requests.get('https://musescore.com/api/jmuse', params=params, headers=headers)
+    response = session.get('https://musescore.com/api/jmuse', params=params, headers=headers)
     note_response = response.json()
     print(response.text)
 
     image_url = note_response['info']['url']
-    image_response = requests.get(image_url)
+    image_response = session.get(image_url)
     image_content = image_response.content
     try:
         svg_converted = io.BytesIO()
@@ -159,7 +161,7 @@ def download_notes_as_pdf(note_url: str) -> io.BytesIO():
 
 
 def main():
-    input_note_url = input("enter Musescore score URL: ")
+    input_note_url = input("Enter Musescore score URL: ")
     pdf_note = download_notes_as_pdf(input_note_url)
 
     with open("name.pdf", "wb") as f:
