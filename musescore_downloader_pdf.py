@@ -1,26 +1,35 @@
-# pip3 install cairosvg img2pdf pyTelegramBotAPI asyncer sentry-sdk
-from asyncer import asyncify
-from math import ceil
-import zipfile
-import os
-import threading
-from cairosvg import svg2png
-import cairosvg
+# pip install cairosvg img2pdf pyTelegramBotAPI asyncer sentry-sdk selenium selenium-requests loguru
 import io
+import os
+import sys
+import io
+import threading
+import zipfile
+from math import ceil
+
+import cairosvg
 import img2pdf
-# from time import sleep
+from loguru import logger
+from time import sleep
+import requests
+from asyncer import asyncify
+from cairosvg import svg2png
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
-import requests
-import sys
 
-session = requests.Session()
-session.headers.update({"user-agent": 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36'})
+from urllib.parse import urlencode, urljoin
 
-MEDIUM_QUALITY = (1.0, 150)
+from seleniumrequests import Chrome
+
+from pyvirtualdisplay import Display
+
+MEDIUM_QUALITY = (1.5, 200)
 MEDIUM_PLUS_QUALITY = (2, 300)
 
+display = Display(visible=0, size=(800, 600))
+display.start()
 
 def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -55,7 +64,8 @@ local_state = {
 }
 
 options = webdriver.ChromeOptions()
-options.add_argument("--headless")
+# options.add_argument("--headless")
+# options.add_argument("--window-size=1920x1080")
 options.add_argument("--no-sandbox")
 options.add_argument("--single-process")
 # options.add_argument("user-data-dir=/home/roman/.config/chromium/Default")
@@ -80,7 +90,7 @@ def downloading_and_unpack_ublock():
 # Extensions doesn't supported in headless mode
 options.add_argument("--load-extension=" + downloading_and_unpack_ublock())
 
-driver = webdriver.Chrome(options=options)
+driver = Chrome(options=options)
 
 
 def calculate_scale(width, height, max_dim):
@@ -95,20 +105,12 @@ def calculate_scale(width, height, max_dim):
 
 def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
     if note_url is None or note_id is None or page is None:
+        logger.debug(f"Raising error, since not valid values was gathered: {note_url=}, {note_id=}, {page=}")
         raise ValueError("Note url, note id or page is None")
 
     headers = {
-        'authority': 'musescore.com',
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9',
         'authorization': '8c022bdef45341074ce876ae57a48f64b86cdcf5',  # 63794e5461e4cfa046edfbdddfccc1ac16daffd2
-        'referer': note_url,
-        'sec-ch-ua': '"Not:A-Brand";v="99", "Chromium";v="112"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Linux"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
+        'referer': note_url
     }
 
     params = {
@@ -118,13 +120,21 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
         'v2': '1',
     }
 
-    response = session.get('https://musescore.com/api/jmuse', params=params, headers=headers)
+    get_url = urljoin("https://musescore.com/api/jmuse", "?" + urlencode(params))
+
+    response = driver.request('GET', get_url, headers=headers)
+    logger.debug(response)
+    logger.debug(f"Response status code: {response.status_code}. Response: {response.text}")
     note_response = response.json()
-    print(response.text)
+    logger.debug(note_response)
 
     image_url = note_response['info']['url']
-    image_response = session.get(image_url)
+    logger.debug(f"Downloading image: {image_url}")
+    image_response = driver.request('GET', image_url)
+
     image_content = image_response.content
+    logger.debug(image_content)
+    
     try:
         tree = cairosvg.parser.Tree(bytestring=image_content)
         if float(tree['width']) < 1500.0 or float(tree['height']) < 1500.0:
@@ -133,13 +143,12 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
             scale = MEDIUM_QUALITY[0]
 
         svg_converted = io.BytesIO()
-        svg2png(bytestring=image_content, write_to=svg_converted, scale=scale, dpi=MEDIUM_PLUS_QUALITY[1])
+        svg2png(bytestring=image_content, write_to=svg_converted, scale=scale, dpi=MEDIUM_QUALITY[1])
         image_content = svg_converted
         image_content.seek(0)
     except Exception as ex:
         print(f"Probably not SVG, can't convert to png, ignore: {ex}")
 
-    # print(image_response.text)
     if not isinstance(image_content, io.BytesIO):
         return io.BytesIO(image_content)
 
@@ -153,24 +162,39 @@ async def async_download_notes_as_pdf(note_url: str) -> io.BytesIO():
 def download_notes_as_pdf(note_url: str) -> io.BytesIO():
     driver.get(note_url)
 
-    # sleep(2)
+    sleep(2)
 
     note_id = None
 
+    """
+    i = 0
+    while True:
+        png = driver.get_screenshot_as_png()
+        arr = np.frombuffer(png, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        cv2.imshow('Webpage Screenshot', img)
+        cv2.waitKey(1 * 5_000)
+        cv2.destroyAllWindows()
+        sleep(1)
+        i += 1
+    """
+
     try:
-        metatag = driver.find_element(By.XPATH, "//meta[@property='twitter:app:url:googleplay']")
+        WebDriverWait(driver, 100).until(lambda driver: driver.execute_script('return document.readyState') == 'complete')
+        metatag = driver.find_element(By.XPATH, "//meta[@property='al:android:url']")
         content = metatag.get_attribute("content")
-        print("Meta tag found with content: ", content)
+        logger.debug(f"Meta tag found with content: {content}")
         if content is None:
             raise NoSuchElementException()
         note_id = content.removeprefix("musescore://score/")
+        logger.debug(f"{note_id=}")
     except NoSuchElementException:
         raise ValueError("No valid Musescore URL found")
 
     elements = driver.find_elements(By.CSS_SELECTOR, '.EEnGW.F16e6')
 
     page_count = len(elements)
-    print(page_count)
+    logger.debug(f"{page_count=}")
 
     note_images = [ReturnValueThread(target=download_note_image, args=(note_url, note_id, page)) for page in range(page_count)]
     note_images_result = []
@@ -200,3 +224,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    driver.quit()
+    display.stop()
