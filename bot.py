@@ -1,11 +1,16 @@
-from time import sleep
 import logging
 import os
 from queue import Queue
-from musescore_downloader_pdf import download_notes_as_pdf
-from utils import URLValidator
-import telebot
+from time import sleep
+
 import sentry_sdk
+import telebot
+
+from musescore_downloader import download_notes_as_pdf
+from utils import URLValidator
+
+from const import FALLBACK_LANGUAGE
+from i18n import *
 
 queue = Queue(1)
 
@@ -25,23 +30,9 @@ sentry_sdk.init(SENITRY_SDK_TOKEN, traces_sample_rate=1.0)
 API_TOKEN = os.environ["TOKEN"]
 bot = telebot.TeleBot(API_TOKEN)
 
-FALLBACK_LANGUAGE = "en"
-
-QUEUE_ADD_MESSAGE = {"en": "Adding to queue, please wait....", "ru": 'Задача поставлена в очередь, ожидайте...'}
-
-WELCOME_MESSSAGE = {"en": "Hi {message.from_user.first_name}! I can hel you to download PRO notes from MuseScore in high resolution. Send me URL and I will send you PDF of your notes.", "ru": "Привет {message.from_user.first_name}! Я помогу тебе скачивать платные нотки из Musescore в высоком качестве. Отправь мне ссылку на ноты и я отправлю тебе ноты в формате PDF.\n\nРазработана специально для JustPlay"}
-
-NOT_VALID_URL_MESSAGE = {"ru": "К сожалению, ссылка не является допустимой. Проверьте ссылку на действительность.", "en": "Unfortunately, URL is not valid. Check for any error."}
-
-DOWNLOADING_NOTE_MESSAGE = {"ru": "Скачиваю ноты...", "en": "Downloading..."}
-
-UPLOADING_NOTE_MESSAGE = {"ru": "Загружаю ноты в Telegram...", "en": "Uploading PDF to Telegram..."}
-
-ERROR_MESSAGE = {"ru": "Произошла ошибка: {e}", "en": "Unknown error: {e}"}
-
 from multiprocessing.dummy import Pool
-pool = Pool(20)
 
+pool = Pool(20)
 
 # Thanks god: https://ru.stackoverflow.com/questions/1304696/%D0%9C%D0%BD%D0%BE%D0%B3%D0%BE%D0%BF%D0%BE%D1%82%D0%BE%D1%87%D0%BD%D0%BE%D1%81%D1%82%D1%8C-%D0%B4%D0%BB%D1%8F-%D0%B1%D0%BE%D1%82%D0%B0-%D0%B2-%D1%82%D0%B5%D0%BB%D0%B5%D0%B3%D1%80%D0%B0%D0%BC%D0%B5
 def executor(fu):

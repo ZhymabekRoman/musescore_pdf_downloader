@@ -1,0 +1,9 @@
+cairosvg
+img2pdf
+pyTelegramBotAPI
+asyncer
+sentry-sdk
+selenium
+selenium-requests
+loguru
+pyvirtualdisplay

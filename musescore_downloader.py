@@ -1,59 +1,33 @@
-# pip install cairosvg img2pdf pyTelegramBotAPI asyncer sentry-sdk selenium selenium-requests loguru
 import io
 import os
-import sys
-import io
-import threading
 import zipfile
 from math import ceil
+from time import sleep
+from urllib.parse import urlencode, urljoin
 
 import cairosvg
 import img2pdf
-from loguru import logger
-from time import sleep
 import requests
 from asyncer import asyncify
 from cairosvg import svg2png
-from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-
-from urllib.parse import urlencode, urljoin
-
-from seleniumrequests import Chrome
-
+from loguru import logger
 from pyvirtualdisplay import Display
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
+from selenium.webdriver import ChromeOptions
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+
+from seleniumrequests import Chrome, Firefox
+
+from utils import ReturnValueThread, chunks
 
 MEDIUM_QUALITY = (1.5, 200)
 MEDIUM_PLUS_QUALITY = (2, 300)
 
 display = Display(visible=0, size=(800, 600))
-display.start()
-
-def chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
-
-
-# Thanks to Alexandra Zaharia: https://alexandra-zaharia.github.io/posts/how-to-return-a-result-from-a-python-thread/
-class ReturnValueThread(threading.Thread):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.result = None
-
-    def run(self):
-        if self._target is None:
-            return  # could alternatively raise an exception, depends on the use case
-        try:
-            self.result = self._target(*self._args, **self._kwargs)
-        except Exception as exc:
-            print(f'{type(exc).__name__}: {exc}', file=sys.stderr)  # properly handle the exception
-
-    def join(self, *args, **kwargs):
-        super().join(*args, **kwargs)
-        return self.result
+# display.start()
 
 
 local_state = {
@@ -63,13 +37,24 @@ local_state = {
     # "dns_over_https.templates": "https://chrome.cloudflare-dns.com/dns-query",
 }
 
-options = webdriver.ChromeOptions()
-# options.add_argument("--headless")
-# options.add_argument("--window-size=1920x1080")
-options.add_argument("--no-sandbox")
-options.add_argument("--single-process")
-# options.add_argument("user-data-dir=/home/roman/.config/chromium/Default")
-options.add_experimental_option("localState", local_state)
+chrome_options = ChromeOptions()
+# chrome_options.add_argument("--headless")
+# chrome_options.add_argument("--window-size=1920x1080")
+# chrome_options.add_argument("--no-sandbox")
+# chrome_options.add_argument("--single-process")
+# chrome_options.add_argument("user-data-dir=/home/roman/.config/chromium/Default")
+chrome_options.add_experimental_option("localState", local_state)
+
+firefox_path = "/usr/bin/firefox-aurora"
+firefox_options = FirefoxOptions()
+firefox_options.binary_location = firefox_path
+# firefox_options.add_argument("--headless")  # Uncomment if headless mode is desired
+firefox_options.add_argument("--width=1920")
+firefox_options.add_argument("--height=1080")
+# Firefox does not have a direct equivalent for "--no-sandbox" or "--single-process"
+# These are specific to Chrome and Chromium-based browsers.
+
+firefox_profile = FirefoxProfile("/tmp/firefox_profile")
 
 # options.add_experimental_option("detach", True)
 
@@ -88,9 +73,10 @@ def downloading_and_unpack_ublock():
 
 
 # Extensions doesn't supported in headless mode
-options.add_argument("--load-extension=" + downloading_and_unpack_ublock())
+chrome_options.add_argument("--load-extension=" + downloading_and_unpack_ublock())
 
-driver = Chrome(options=options)
+driver = Chrome(options=chrome_options)
+# driver = Firefox(firefox_profile, options=firefox_options)
 
 
 def calculate_scale(width, height, max_dim):
@@ -109,21 +95,21 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
         raise ValueError("Note url, note id or page is None")
 
     headers = {
-        'authorization': '8c022bdef45341074ce876ae57a48f64b86cdcf5',  # 63794e5461e4cfa046edfbdddfccc1ac16daffd2
-        'referer': note_url
+        'Authorization': '33b3',  # 63794e5461e4cfa046edfbdddfccc1ac16daffd2
+        'Referer': note_url,
+        'Cookie': 'mu_browser_bi=1974794642206237275; mu_browser_uni=ceo_mbj3; _mu_unified_id=1.1706516430.373992574; mu_ab_experiment=3682.3_4183.2_4240.1_4360.1_4393.2_4414.2_4417.1_4435.1_4441.2_4447.2_4450.2_4456.2_4471.2_4477.2_4489.2_4498.3_4501.1_4519.2_4525.1_4528.2; _mu_session_id=1.1710010160.1710010523; learn.tooltip.view.count=2; mscom_new=b20afb10f70c9963f3b5d1285284b8ed; _mu_dc_regular=%7B%22v%22%3A2%2C%22t%22%3A1710007253%7D; _mu_user_segmentation=segment.5_pred.0_group.2_events.8_loads.0_rec.7_freq.2; _csrf=2PrtalwqZAVyyfNFA6SanQL3eI8SsNwp; mu_has_static_cache=1710007253; _ms_adScoreView=6; __cf_bm=H07YDrZllWqCzll1XXn0lV3e.nnEHyXhoUICe6oXyaI-1710010161-1.0.1.1-NZkoUlInzCSs5H8fukQ9bIhay_DQGdMj_DhkYIKLNNtE2uWpl2oSC5kRXJdY4CQatdEHfgKcuHSr8GhyoFGUIQ; _ga=GA1.2.2129050638.1710010162; _gid=GA1.2.1700830849.1710010162'
     }
 
     params = {
         'id': note_id,
         'index': str(page),
         'type': 'img',
-        'v2': '1',
     }
 
     get_url = urljoin("https://musescore.com/api/jmuse", "?" + urlencode(params))
+    logger.debug(f"{get_url=}")
 
     response = driver.request('GET', get_url, headers=headers)
-    logger.debug(response)
     logger.debug(f"Response status code: {response.status_code}. Response: {response.text}")
     note_response = response.json()
     logger.debug(note_response)
@@ -134,7 +120,7 @@ def download_note_image(note_url: str, note_id: str, page: int) -> bytes:
 
     image_content = image_response.content
     logger.debug(image_content)
-    
+
     try:
         tree = cairosvg.parser.Tree(bytestring=image_content)
         if float(tree['width']) < 1500.0 or float(tree['height']) < 1500.0:
