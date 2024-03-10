@@ -42,7 +42,7 @@ class Extraction:
         # self.binary_location = config.get("general", "binary_location")
 
         self.display = Display(visible=0, size=(800, 600))
-        # self.display.start()
+        self.display.start()
 
         # open the browser
         # if self.driver_path is not None and self.driver_path != "":
@@ -228,4 +228,4 @@ class Extraction:
 
     def __del__(self):
         self.browser.close()
-        # self.display.stop()
+        self.display.stop()
