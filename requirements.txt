@@ -1,9 +1,11 @@
-cairosvg
-img2pdf
+svglib
+PyPDF2
 pyTelegramBotAPI
 asyncer
 sentry-sdk
+setuptools
 selenium
+undetected-chromedriver
 selenium-requests
 loguru
 pyvirtualdisplay
